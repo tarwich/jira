@@ -1,0 +1,24 @@
+{
+  "name": "jira-cli",
+  "version": "0.1.0",
+  "description": "JIRA command-line tools",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tarwich/jira-cli.git"
+  },
+  "keywords": [],
+  "author": "Samuel Dillow",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tarwich/jira-cli/issues"
+  },
+  "homepage": "https://github.com/tarwich/jira-cli#readme",
+  "dependencies": {
+    "eslint-config-voidray": "github:voidrayco/eslint-config-voidray",
+    "jira-client": "^6.4.1",
+    "ramda": "^0.25.0",
+    "request": "^2.83.0"
+  }
+}
