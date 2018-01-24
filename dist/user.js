@@ -24,6 +24,6 @@ class User {
 // region: Methods
 //
 /** Find a user that matches the substring */
-User.find = ramda_1.memoize((substring) => jira_1.jira.searchUsers(substring));
+User.find = ramda_1.memoize((substring) => jira_1.jira.searchUsers({ username: substring }));
 exports.User = User;
 //# sourceMappingURL=user.js.map

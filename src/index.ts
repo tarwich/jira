@@ -7,7 +7,11 @@ import { config } from './lib/config';
 import { Project } from './project';
 import { Transition } from './transition';
 import { User } from './user';
+import { Logger } from './logger';
+import { version } from 'punycode';
+import { Version } from './version';
 
+const log = new Logger('index');
 const writeFileP = promisify(writeFile);
 const isRegex = (text: string) => /^\/.*\/$/.test(text);
 const toRegex = (text: string, options = 'i') =>
@@ -27,6 +31,8 @@ interface IOptions {
   // Actions
   //
 
+  /** The version to create */
+  createVersion?: string;
   /** The JQL query to send to JIRA */
   search?: string;
   /** Specific issue key to work with */
@@ -91,6 +97,7 @@ const parseArguments = () => {
       case '--add-comment':
         result.comment = process.argv[++i];
         break;
+      case '--add-field':
       case '--add-fields':
         result.fields = process.argv[++i].split(',')
         .reduce((fields, field) => ({...fields, [field]: true}), result.fields);
@@ -99,7 +106,11 @@ const parseArguments = () => {
         result.addLabel = process.argv[++i].split(',');
         break;
       case '--assign':
+      case '--assign-to':
         result.assign = process.argv[++i];
+        break;
+      case '--create-version':
+        result.createVersion = process.argv[++i];
         break;
       case '--username':
       case '--user':
@@ -168,6 +179,9 @@ const parseArguments = () => {
       case '--transition-to':
         result.transitionTo = process.argv[++i];
         break;
+      case '--unassign':
+        result.assign = '';
+        break;
       case '--export':
         result.export = true;
         break;
@@ -195,6 +209,8 @@ const parseArguments = () => {
   if (result.host && result.host in config.hosts) {
     Object.assign(result, config.hosts[result.host]);
   }
+
+  log.debug('options %o', result);
 
   return result;
 };
@@ -255,8 +271,8 @@ class Application {
       console.log('Transitions:');
 
       for (const transition of results.transitions) {
-        const { name, to: { name: toName } } = transition;
-        console.log(`  ${name} (--> ${toName})`);
+        const { name, to: { name: toName }, id } = transition;
+        console.log(`  ${name} --> ${toName} (#${id})`);
       }
     }
 
@@ -264,12 +280,12 @@ class Application {
     if (options.transitionTo) await issue.transitionTo(options.transitionTo);
 
     // Assign issue
-    if (options.assign) await issue.assignTo(options.assign);
+    if (options.assign !== undefined) await issue.assignTo(options.assign);
 
     // Update issue
     if (issue.dirty) {
       await issue.save();
-      console.log(issue.toString(options.fields));
+      console.log('💾', issue.toString(options.fields));
     }
   }
 
@@ -354,6 +370,13 @@ class Application {
   async run() {
     await this.connect();
 
+    if (options.createVersion) {
+      await Version.createVersion({
+        name: options.createVersion,
+      });
+      console.log('Created version: %o', version);
+    }
+
     if (options.listProjects) {
       await this.handleResponse(await jira.listProjects());
     }
@@ -372,13 +395,11 @@ class Application {
 
     if (options.listStatus) {
       const results = await jira.listStatus();
-      for (const result of results) {
-        console.log(result.name);
-      }
+      for (const result of results) console.log(result.name);
     }
 
     if (options.listUsers !== undefined) {
-      const result = await User.find({username: options.listUsers});
+      const result = await User.find(options.listUsers);
 
       if (result.length === 0) console.log('0 users found');
       else result.forEach(user => this.handleUser(new User(user)));

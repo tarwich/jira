@@ -256,7 +256,7 @@ declare module 'jira-client' {
         /** Versions affected by this issue */
         "versions": JiraVersion[];
         "issuelinks": JiraIssueLink[];
-        "assignee": JiraUser;
+        "assignee": Partial<JiraUser>;
         /** ISO datestamp for the late updated date of this issue */
         "updated": string;
         "status": JiraIssueStatus;
@@ -314,9 +314,9 @@ declare module 'jira-client' {
         id: string
       };
       update?: {
-        comment: {
+        comment: [{
           add: { body: string };
-        };
+        }];
       };
     }
 
@@ -454,7 +454,7 @@ declare module 'jira-client' {
 
     getVersions (project: string): Promise<JiraApi.JiraVersion[]>;
 
-    createVersion (version: string): Promise<JiraApi.JsonResponse>;
+    createVersion (version: Partial<JiraApi.JiraVersion>): Promise<JiraApi.JsonResponse>;
 
     updateVersion (version: string): Promise<JiraApi.JsonResponse>;
 

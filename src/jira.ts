@@ -1,5 +1,5 @@
 import * as JiraApi from 'jira-client';
-import { JiraApiOptions, JiraIssueUpdate, SearchUserOptions } from 'jira-client';
+import { JiraApiOptions, JiraIssueUpdate, SearchUserOptions, JiraVersion, TransitionObject } from 'jira-client';
 import { memoize } from 'ramda';
 import { Required } from './required';
 
@@ -27,6 +27,11 @@ class Jira {
   addComment(issueId: string, comment: string) {
     if (!this.jira) throw new Error(ERROR_NOT_CONNECTED);
     return this.jira.addComment(issueId, comment);
+  }
+
+  createVersion(version: Partial<JiraVersion>) {
+    if (!this.jira) throw new Error(ERROR_NOT_CONNECTED);
+    return this.jira.createVersion(version);
   }
 
   findIssue(issueNumber: string) {
@@ -73,7 +78,7 @@ class Jira {
   });
 
   /** Perform the specified transition on an issue */
-  transitionIssue(issueId: string, transition: {transition: string}) {
+  transitionIssue(issueId: string, transition: TransitionObject) {
     if (!this.jira) throw new Error(ERROR_NOT_CONNECTED);
     this.jira.transitionIssue(issueId, transition);
   }

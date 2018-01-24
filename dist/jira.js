@@ -23,6 +23,11 @@ class Jira {
             throw new Error(ERROR_NOT_CONNECTED);
         return this.jira.addComment(issueId, comment);
     }
+    createVersion(version) {
+        if (!this.jira)
+            throw new Error(ERROR_NOT_CONNECTED);
+        return this.jira.createVersion(version);
+    }
     findIssue(issueNumber) {
         if (!this.jira)
             throw new Error(ERROR_NOT_CONNECTED);

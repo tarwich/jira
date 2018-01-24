@@ -2,6 +2,7 @@ import { JiraIssue, JiraIssueSearchResults, JiraIssueUpdate, JiraUser, JiraVersi
 import { merge } from 'ramda';
 import { jira } from './jira';
 import { User } from './user';
+import { parse } from 'url';
 
 const TYPE_ICONS: {[key: string]: string} = {
   bug: '🐞',
@@ -28,7 +29,7 @@ export class Issue {
 
   get assignee() { return this.data.fields.assignee; }
 
-  set assignee(value: JiraUser) {
+  set assignee(value: Partial<JiraUser>) {
     this.data.fields.assignee = value;
     this.queueUpdate({fields: {assignee: value}});
   }
@@ -91,21 +92,19 @@ export class Issue {
     else return `❔(${this.data.fields.issuetype.name})`;
   }
 
-  get url() { return this.data.self; }
+  get url() {
+    const base = parse(this.data.self);
+    return `${base.protocol}://${base.hostname}/browse/${this.data.key}`;
+  }
 
   // endregion
 
   addComment(comment: string) {
     this.queueUpdate({
       update: {
-        comment: {
-          add: {
-            body: comment,
-          },
-        },
+        comment: [{ add: {body: comment} }],
       },
     });
-    return jira.addComment(this.key, comment);
   }
 
   /**
@@ -125,23 +124,28 @@ export class Issue {
    * less than one user are found, then will not assign the issue and will
    * instead throw an error
    */
-  async assignTo(query: string) {
-    let users = await User.find(query);
-
-    // If there is an exact match, then use that
-    if (users.length > 1) {
-      const directMatch = users.find(user => user.name === query);
-      if (directMatch) users = [directMatch];
+  async assignTo(query?: string) {
+    if (query) {
+      let users = await User.find(query);
+  
+      // If there is an exact match, then use that
+      if (users.length > 1) {
+        const directMatch = users.find(user => user.name === query);
+        if (directMatch) users = [directMatch];
+      }
+  
+      if (users.length > 1) {
+        console.error('Ambiguous user:');
+        for (const user of users) console.log(user.toString());
+      }
+      else if (users.length === 0) {
+        console.error(`No users found for query: ${query}`);
+      }
+      else this.assignee = users[0];
     }
-
-    if (users.length > 1) {
-      console.error('Ambiguous user:');
-      for (const user of users) console.log(user.toString());
+    else {
+      this.assignee = {name: ''};
     }
-    else if (users.length === 0) {
-      console.error(`No users found for query: ${query}`);
-    }
-    else this.assignee = users[0];
   }
 
   /**
@@ -193,12 +197,10 @@ export class Issue {
    */
   async save() {
     if (this.pendingUpdate.transition) {
-      await jira.transitionIssue(this.key, {
-        transition: this.pendingUpdate.transition.id,
-      });
+      await jira.transitionIssue(this.key, this.pendingUpdate);
     }
 
-    if (this.pendingUpdate.fields || this.pendingUpdate.update) {
+    else {
       await jira.updateIssue(this.key, this.pendingUpdate);
     }
   }
@@ -243,7 +245,7 @@ export class Issue {
       } ${
         selected.labels ? `[${this.labels.join(', ')}]` : ''
       } ${
-        (selected.assignee && this.assignee) ? `@${this.assignee.name}` : ''
+        (selected.assignee && this.assignee && this.assignee.name) ? `@${this.assignee.name}` : ''
       } ${
         selected.fix ? `fix: ${(this.fixVersions || []).map(v => v.name)}` : ''
       } ${

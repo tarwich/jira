@@ -1,5 +1,8 @@
-const { resolve } = require('path');
-const { assocPath, keys, mergeDeepRight, reduce } = require('ramda');
+import { resolve } from 'path';
+import { assocPath, keys, mergeDeepRight, reduce } from 'ramda';
+import { Logger } from "../logger";
+
+const log = new Logger('config');
 
 /**
  * Attempts to require a path, and doesn't crash if an error occurs
@@ -25,4 +28,7 @@ export const config = reduce(mergeDeepRight, {}, [
     {},
     keys(process.env),
   ),
-]);
+]) as any;
+
+log.debug('configuration loaded');
+log.debug(config);

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const ramda_1 = require("ramda");
 const jira_1 = require("./jira");
 const user_1 = require("./user");
+const url_1 = require("url");
 const TYPE_ICONS = {
     bug: '🐞',
     epic: '📚',
@@ -29,9 +30,12 @@ class Issue {
     get dirty() {
         return Object.keys(this.pendingUpdate).length > 0;
     }
+    get fixVersions() { return this.data.fields.fixVersions || []; }
     set fixVersions(versions) {
         this.data.fields.fixVersions = versions;
-        this.queueUpdate({ fields: { fixVersions: versions } });
+        this.queueUpdate({ fields: {
+                fixVersions: versions,
+            } });
     }
     get key() {
         return this.data.key;
@@ -42,6 +46,9 @@ class Issue {
     set labels(value) {
         this.data.fields.labels = value;
         this.queueUpdate({ fields: { labels: value } });
+    }
+    get project() {
+        return this.data.fields.project;
     }
     get priority() {
         return this.data.fields.priority ? this.data.fields.priority.name : '';
@@ -66,18 +73,17 @@ class Issue {
         else
             return `❔(${this.data.fields.issuetype.name})`;
     }
+    get url() {
+        const base = url_1.parse(this.data.self);
+        return `${base.protocol}://${base.hostname}/browse/${this.data.key}`;
+    }
     // endregion
     addComment(comment) {
         this.queueUpdate({
             update: {
-                comment: {
-                    add: {
-                        body: comment,
-                    },
-                },
+                comment: [{ add: { body: comment } }],
             },
         });
-        return jira_1.jira.addComment(this.key, comment);
     }
     /**
      * Add a label to the existing labels array
@@ -96,7 +102,13 @@ class Issue {
      * instead throw an error
      */
     async assignTo(query) {
-        const users = await user_1.User.find(query);
+        let users = await user_1.User.find(query);
+        // If there is an exact match, then use that
+        if (users.length > 1) {
+            const directMatch = users.find(user => user.name === query);
+            if (directMatch)
+                users = [directMatch];
+        }
         if (users.length > 1) {
             console.error('Ambiguous user:');
             for (const user of users)
@@ -154,7 +166,7 @@ class Issue {
     async save() {
         if (!this.dirty)
             return;
-        return jira_1.jira.updateIssue(this.key, this.pendingUpdate);
+        await jira_1.jira.updateIssue(this.key, this.pendingUpdate);
     }
     /**
      * Set the fix version for an issue by searching for the version and assigning
@@ -163,12 +175,25 @@ class Issue {
      * If the version is not found, then an error will be thrown
      */
     async setFixVersion(search) {
-        const versions = await jira_1.jira.listVersions(search);
+        const versions = (await jira_1.jira.listVersions(this.project.key))
+            .filter(version => version.name.indexOf(search) !== -1);
         if (versions.length === 0)
             console.error(`0 versions found for: ${search}`);
         else {
             this.fixVersions = versions;
         }
+    }
+    /** Output this as a string */
+    toString(fields) {
+        const selected = Array.isArray(fields) ?
+            fields.reduce((result, field) => Object.assign(fields, { [field]: true }), {}) : fields || {};
+        return `
+      ${(selected.icon || selected.typeIcon) ? this.typeIcon : ''} ${selected.key ? this.key : ''} ${selected.summary ? this.summary : ''} ${(selected.status || selected.priority) ? `(${[
+            selected.status && this.status,
+            selected.priority && this.priority,
+        ].filter(Boolean).join(', ')})` : ''} ${selected.labels ? `[${this.labels.join(', ')}]` : ''} ${(selected.assignee && this.assignee) ? `@${this.assignee.name}` : ''} ${selected.fix ? `fix: ${(this.fixVersions || []).map(v => v.name)}` : ''} ${selected.url ? this.url : ''}
+    `
+            .replace(/(^\s+|\s+$|\s(?=\s))/g, '');
     }
     /**
      * Transition an issue to a new status by looking up the transition that goes
@@ -181,7 +206,8 @@ class Issue {
         const re = new RegExp(status, 'i');
         const transitions = results.transitions.filter(t => re.test(t.to.name));
         if (transitions.length === 1) {
-            await jira_1.jira.transitionIssue(this.key, { transition: transitions[0].id });
+            this.data.fields.status = transitions[0].to;
+            this.queueUpdate({ transition: { to: { id: transitions[0].id } } });
         }
         else if (transitions.length > 1) {
             console.log('Ambiguous transition');

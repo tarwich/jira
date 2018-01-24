@@ -8,6 +8,10 @@ const config_1 = require("./lib/config");
 const project_1 = require("./project");
 const transition_1 = require("./transition");
 const user_1 = require("./user");
+const logger_1 = require("./logger");
+const punycode_1 = require("punycode");
+const version_1 = require("./version");
+const log = new logger_1.Logger('index');
 const writeFileP = util_1.promisify(fs_1.writeFile);
 const isRegex = (text) => /^\/.*\/$/.test(text);
 const toRegex = (text, options = 'i') => new RegExp(text.replace(/(^\/|\/$)/g, ''), options);
@@ -30,11 +34,19 @@ const parseArguments = () => {
             case '--add-comment':
                 result.comment = process.argv[++i];
                 break;
+            case '--add-fields':
+                result.fields = process.argv[++i].split(',')
+                    .reduce((fields, field) => (Object.assign({}, fields, { [field]: true })), result.fields);
+                break;
             case '--add-label':
                 result.addLabel = process.argv[++i].split(',');
                 break;
             case '--assign':
+            case '--assign-to':
                 result.assign = process.argv[++i];
+                break;
+            case '--create-version':
+                result.createVersion = process.argv[++i];
                 break;
             case '--username':
             case '--user':
@@ -53,6 +65,7 @@ const parseArguments = () => {
                 result.fields = process.argv[++i].split(',')
                     .reduce((result, field) => (Object.assign({}, result, { [field]: true })), {
                     assignee: false,
+                    fix: false,
                     key: false,
                     labels: false,
                     priority: false,
@@ -90,6 +103,9 @@ const parseArguments = () => {
             case '--remove-label':
                 result.removeLabel = process.argv[++i];
                 break;
+            case '--set-fix':
+                result.fixVersion = process.argv[++i];
+                break;
             case '--set-labels':
                 result.setLabels = process.argv[++i].split(',');
                 break;
@@ -125,21 +141,10 @@ const parseArguments = () => {
     if (result.host && result.host in config_1.config.hosts) {
         Object.assign(result, config_1.config.hosts[result.host]);
     }
+    log.debug('options %o', result);
     return result;
 };
 const options = parseArguments();
-const printIssue = (issue) => {
-    const fields = {
-        labels: [],
-    };
-    for (const key of Object.keys(options.fields)) {
-        fields[key] = options.fields[key] ? issue[key] : '';
-    }
-    // Output the issue
-    return `${fields.typeIcon} ${fields.key} ${fields.summary} (${fields.status}, ${fields.priority}) [${fields.labels}] ${(fields.assignee || {}).displayName || ''}`
-        .replace(/(^ +| +$|  +|\([ ,]+\)|\[\])/g, '')
-        .replace(/\((?:(\w+), |, (\w+))\)/, '($1$2)');
-};
 /** Main entry point */
 class Application {
     async connect() {
@@ -162,7 +167,7 @@ class Application {
     async handleIssue(issue) {
         if (options.comment)
             issue.addComment(options.comment);
-        console.log(printIssue(issue));
+        console.log(issue.toString(options.fields));
         // Add label
         if (options.addLabel)
             issue.addLabel(options.addLabel);
@@ -177,6 +182,9 @@ class Application {
             else
                 issue.removeLabel(options.removeLabel);
         }
+        // Set fix version
+        if (options.fixVersion)
+            await issue.setFixVersion(options.fixVersion);
         // List transitions
         if (options.listTransitions) {
             const results = await transition_1.Transition.loadForIssue(issue);
@@ -188,14 +196,14 @@ class Application {
         }
         // Perform transition
         if (options.transitionTo)
-            issue.transitionTo(options.transitionTo);
+            await issue.transitionTo(options.transitionTo);
         // Assign issue
         if (options.assign)
-            issue.assignTo(options.assign);
+            await issue.assignTo(options.assign);
         // Update issue
         if (issue.dirty) {
             await issue.save();
-            console.log(printIssue(issue));
+            console.log(issue.toString(options.fields));
         }
     }
     /**
@@ -230,7 +238,7 @@ class Application {
             let issues = response.issues.map(issue => new issue_1.Issue(issue));
             if (options.filter) {
                 const re = options.filter;
-                issues = issues.filter(issue => re.test(printIssue(issue)));
+                issues = issues.filter(issue => re.test(issue.toString(options.fields)));
             }
             if (response.total === 0)
                 console.log('0 issues found');
@@ -240,7 +248,7 @@ class Application {
         }
         else if (issue_1.Issue.isIssue(response)) {
             if (options.filter) {
-                if (options.filter.test(printIssue(new issue_1.Issue(response)))) {
+                if (options.filter.test(new issue_1.Issue(response).toString(options.fields))) {
                     await this.handleIssue(new issue_1.Issue(response));
                 }
             }
@@ -266,6 +274,12 @@ class Application {
     /** Main entry point for the program */
     async run() {
         await this.connect();
+        if (options.createVersion) {
+            await version_1.Version.createVersion({
+                name: options.createVersion,
+            });
+            console.log('Created version: %o', punycode_1.version);
+        }
         if (options.listProjects) {
             await this.handleResponse(await jira_1.jira.listProjects());
         }
@@ -280,12 +294,11 @@ class Application {
         }
         if (options.listStatus) {
             const results = await jira_1.jira.listStatus();
-            for (const result of results) {
+            for (const result of results)
                 console.log(result.name);
-            }
         }
         if (options.listUsers !== undefined) {
-            const result = await jira_1.jira.searchUsers({ username: options.listUsers });
+            const result = await user_1.User.find(options.listUsers);
             if (result.length === 0)
                 console.log('0 users found');
             else

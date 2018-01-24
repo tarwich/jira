@@ -24,7 +24,7 @@ export class User {
   //
 
   /** Find a user that matches the substring */
-  static find = memoize((substring: string) => jira.searchUsers({username: substring}));
+  static find = memoize((substring: string) => jira.searchUsers({username: substring})) as typeof jira.searchUsers;
 
   toString(fields: (keyof User)[]) {
     const values: {[key: string]: string} = pick(fields, this);
