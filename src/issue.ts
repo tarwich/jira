@@ -94,7 +94,7 @@ export class Issue {
 
   get url() {
     const base = parse(this.data.self);
-    return `${base.protocol}://${base.hostname}/browse/${this.data.key}`;
+    return `${base.protocol}//${base.hostname}/browse/${this.data.key}`;
   }
 
   // endregion
