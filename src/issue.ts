@@ -8,7 +8,8 @@ const TYPE_ICONS: {[key: string]: string} = {
   bug: '🐞',
   epic: '📚',
   improvement: '💡',
-  story: '📝',
+  story: '📗',
+  task: '📋',
 };
 
 /**
@@ -265,11 +266,18 @@ export class Issue {
   async transitionTo(status: string) {
     const results = await jira.listTransitions(this.key);
     const re = new RegExp(status, 'i');
+    const reExact = new RegExp(`^${status}$`, 'i');
     const transitions = results.transitions.filter(t => re.test(t.to.name));
+    const exactMatch = transitions.find(t => reExact.test(t.to.name));
 
     if (transitions.length === 1) {
       this.data.fields.status = transitions[0].to;
       this.queueUpdate({transition: {id: transitions[0].id}});
+    }
+
+    else if (exactMatch) {
+      this.data.fields.status = exactMatch.to;
+      this.queueUpdate({transition: {id: exactMatch.id}});
     }
 
     else if (transitions.length > 1) {
